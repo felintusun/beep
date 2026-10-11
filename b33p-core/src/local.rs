@@ -240,6 +240,16 @@ impl LocalStore {
         Ok(Self { db })
     }
 
+    /// Why: SQLite checkpoints on its own only at 1000 log pages, so erased rows stay in the
+    /// -wal file for days (Sintonen, Signal Desktop macOS, disclosed 2026-05). Any connection
+    /// may checkpoint, so this covers the store's pool too.
+    pub(crate) async fn checkpoint(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&self.db)
+            .await
+            .map(drop)
+    }
+
     /// Conversations b33p remembers something about, by id.
     pub(crate) async fn conversations(
         &self,
@@ -1048,6 +1058,31 @@ mod tests {
             assert!(local.edits(&a).await.unwrap().is_empty());
             assert!(local.deleted(&a).await.unwrap().is_empty());
             assert_eq!(local.due(150).await.unwrap().0, []);
+        });
+    }
+
+    #[test]
+    fn checkpoint_empties_the_log() {
+        use sqlx::sqlite::SqliteJournalMode;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("local.db3");
+        block_on(async {
+            let options = SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true)
+                .journal_mode(SqliteJournalMode::Wal);
+            let local = LocalStore::open(options).await.unwrap();
+            let a = ConversationId("a".into());
+            let m = reference("alice", 10);
+            local.record_edit(&a, &m, 20, "secret").await.unwrap();
+            local.forget(&[(a, m)]).await.unwrap();
+            let log = path.with_extension("db3-wal");
+            assert!(
+                std::fs::metadata(&log).unwrap().len() > 0,
+                "the log holds the writes"
+            );
+            local.checkpoint().await.unwrap();
+            assert_eq!(std::fs::metadata(&log).unwrap().len(), 0);
         });
     }
 

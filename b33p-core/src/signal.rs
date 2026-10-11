@@ -288,6 +288,8 @@ fn open_store(
         .busy_timeout(Duration::from_secs(10))
         // sqlx keeps its own copy of this string; it can't be wiped.
         .pragma("key", vault::sqlcipher_pragma(key).to_string())
+        // SQLCipher's build default; set so it doesn't depend on the build.
+        .pragma("secure_delete", "ON")
         // The key is part of the SQL text (pragmas take no parameters), so statements must
         // never reach the log, whatever RUST_LOG says.
         .disable_statement_logging()
@@ -1738,6 +1740,9 @@ async fn sweep_expired(manager: Mgr, ctx: Ctx) {
             tokio::time::sleep(RETRY).await;
             continue;
         }
+        if !deleted.is_empty() {
+            checkpoint(&ctx).await;
+        }
         let mut gone: HashMap<ConversationId, Vec<MessageRef>> = HashMap::new();
         for (conversation, message) in deleted {
             gone.entry(conversation).or_default().push(message);
@@ -2718,6 +2723,7 @@ async fn on_answered_elsewhere(
         let mut store = manager.store().clone();
         match store.clear_thread(&thread).await {
             Ok(()) => {
+                checkpoint(ctx).await;
                 let _ = ctx.events.send(Event::Cleared(id));
             }
             Err(error) => warn!(%error, "failed to delete a chat deleted elsewhere"),
@@ -3074,11 +3080,20 @@ async fn erase_deleted(
     target: &MessageRef,
 ) -> Result<(), String> {
     let mut store = manager.store().clone();
-    erase_from_store(&mut store, thread, target).await?;
+    if erase_from_store(&mut store, thread, target).await? {
+        checkpoint(ctx).await;
+    }
     ctx.tables
         .record_deleted(conversation, target)
         .await
         .map_err(|error| format!("failed to save: {error}"))
+}
+
+/// Failing is harmless: the next checkpoint catches up.
+async fn checkpoint(ctx: &Ctx) {
+    if let Err(error) = ctx.tables.checkpoint().await {
+        warn!(%error, "failed to checkpoint the database");
+    }
 }
 
 /// The store keys messages by (thread, timestamp); the sender check keeps another author's
@@ -3816,6 +3831,7 @@ async fn handle_command(
                 .forget(&[(conversation, target)])
                 .await
                 .map_err(db)?;
+            checkpoint(ctx).await;
         }
         Command::Typing {
             conversation,
@@ -4792,6 +4808,7 @@ async fn respond(
                 .clear_thread(thread)
                 .await
                 .map_err(|e| format!("failed to delete the chat: {e}"))?;
+            checkpoint(ctx).await;
             let _ = ctx.events.send(Event::Cleared(conversation.clone()));
             Type::Delete
         }
