@@ -803,7 +803,9 @@ impl Window {
     }
 
     pub fn show(&self) -> Result<(), slint::PlatformError> {
-        self.0.show()
+        self.0.show()?;
+        crate::capture::exclude(self.0.window());
+        Ok(())
     }
 
     pub fn hide(&self) {

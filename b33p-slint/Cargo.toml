@@ -52,7 +52,8 @@ slint = { version = "1.18", default-features = false, features = ["backend-qt"] 
 
 # Elsewhere, Slint's own window and renderer.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-slint = { version = "1.18", default-features = false, features = ["backend-winit", "renderer-femtovg"] }
+# raw-window-handle-06: `capture.rs`.
+slint = { version = "1.18", default-features = false, features = ["backend-winit", "renderer-femtovg", "raw-window-handle-06"] }
 
 # Asks whether the desktop shows tray icons (`tray::host_present`), and keeps b33p to one
 # copy (`instance.rs`).
@@ -68,6 +69,8 @@ signal-hook = "0.4"
 # The single-instance pipe (`instance.rs`) and the window that hears the session end
 # (`shutdown.rs`).
 [target.'cfg(windows)'.dependencies]
+# For `capture.rs`; the version slint's feature exposes.
+raw-window-handle = "0.6"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

@@ -18,6 +18,7 @@ use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 
 mod audio;
 mod autostart;
+mod capture;
 mod clipboard;
 mod instance;
 mod logging;

@@ -91,6 +91,8 @@ fn runtime_dir() -> Option<PathBuf> {
 /// Makes `path` as a new directory readable by its owner only; fails if anything is there
 /// already (a directory, a file or a symbolic link alike).
 fn create_private(path: &Path) -> io::Result<()> {
+    // Only unix sets a mode on it.
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
     std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
