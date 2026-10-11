@@ -827,6 +827,8 @@ impl ChatState {
                 self.requests_known = true;
                 update.conversations = true;
             }
+            // Kept by the UI shell.
+            Event::Preferences(_) => {}
             Event::Cleared(conversation) => {
                 self.history.remove(&conversation);
                 self.loaded.remove(&conversation);

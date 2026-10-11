@@ -315,6 +315,18 @@ impl Shared {
         }
     }
 
+    fn take_preferences(self: &Rc<Self>, preferences: b33p_core::Preferences) {
+        let mut settings = self.settings.borrow().clone();
+        settings.preferences = b33p_core::Preferences {
+            sync_to_phone: settings.preferences.sync_to_phone,
+            ..preferences
+        };
+        self.apply_settings(settings.clone());
+        if let Some(ui) = self.ui() {
+            ui.show_preferences(&settings.preferences);
+        }
+    }
+
     fn apply_settings(self: &Rc<Self>, settings: Settings) {
         if let Err(error) = settings.save() {
             tracing::warn!(%error, "failed to save settings");
@@ -500,17 +512,25 @@ fn main() -> Result<(), slint::PlatformError> {
                     std::iter::once(first).chain(std::iter::from_fn(|| events.try_recv().ok()));
                 // Hidden, the window may still count as active to the toolkit.
                 let focused = shared.ui().is_some_and(|ui| ui.visible() && ui.active());
+                let mut preferences = None;
                 let update = {
                     let mut chat = shared.chat.borrow_mut();
                     chat.set_window_focused(focused);
                     batch.fold(Update::default(), |update, event| {
-                        if let Event::Error(error) = &event {
-                            tracing::error!("{}", b33p_core::scrub::scrub(error));
+                        match &event {
+                            Event::Error(error) => {
+                                tracing::error!("{}", b33p_core::scrub::scrub(error));
+                            }
+                            Event::Preferences(taken) => preferences = Some(*taken),
+                            _ => {}
                         }
                         update.merge(chat.apply(event))
                     })
                 };
                 shared.refresh(update);
+                if let Some(preferences) = preferences {
+                    shared.take_preferences(preferences);
+                }
             }
             // The channel only closes early if the backend thread died without reporting why
             // (a panic); say so instead of leaving a frozen window.

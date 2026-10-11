@@ -802,6 +802,12 @@ impl Window {
         render(&self.0, chat, images, update);
     }
 
+    pub fn show_preferences(&self, preferences: &b33p_core::Preferences) {
+        self.0.set_read_receipts(preferences.read_receipts);
+        self.0.set_typing_indicators(preferences.typing_indicators);
+        self.0.set_link_previews(preferences.link_previews);
+    }
+
     pub fn show(&self) -> Result<(), slint::PlatformError> {
         self.0.show()
     }

@@ -1592,8 +1592,10 @@ async fn follow_storage(mut manager: Mgr, ctx: Ctx) {
     const SETTLE: Duration = Duration::from_secs(2);
     loop {
         match crate::storage::sync(&manager, &ctx.tables, &ctx.events).await {
-            Ok((known, verifications)) => {
-                take_verifications(&manager, &ctx, verifications).await;
+            Ok(synced) => {
+                let known = synced.known;
+                take_verifications(&manager, &ctx, synced.verifications).await;
+                take_preferences(&ctx, synced.preferences);
                 if known && !ctx.events.send(Event::StorageRead) {
                     return;
                 }
@@ -1626,6 +1628,18 @@ async fn follow_storage(mut manager: Mgr, ctx: Ctx) {
             }
         }
     }
+}
+
+fn take_preferences(ctx: &Ctx, preferences: Option<crate::local::AccountPreferences>) {
+    let Some(account) = preferences else {
+        return;
+    };
+    let mut preferences = ctx.preferences.get();
+    preferences.read_receipts = account.read_receipts;
+    preferences.typing_indicators = account.typing_indicators;
+    preferences.link_previews = account.link_previews;
+    ctx.preferences.set(preferences);
+    let _ = ctx.events.send(Event::Preferences(preferences));
 }
 
 /// Takes over the verifications the storage service says the phone changed (quietly on the
@@ -1672,7 +1686,10 @@ async fn write_storage(manager: &mut Mgr, ctx: &Ctx) {
         match crate::storage::push(manager, &ctx.tables).await {
             Ok(Written::Stale) => {
                 match crate::storage::sync(manager, &ctx.tables, &ctx.events).await {
-                    Ok((_, verifications)) => take_verifications(manager, ctx, verifications).await,
+                    Ok(synced) => {
+                        take_verifications(manager, ctx, synced.verifications).await;
+                        take_preferences(ctx, synced.preferences);
+                    }
                     Err(error) => {
                         warn!(%error, "failed to read the storage service");
                         return;

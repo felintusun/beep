@@ -272,7 +272,7 @@ impl ChatSettings {
 }
 
 /// Preferences the backend acts on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Preferences {
     /// Tell senders when their messages were read.
     pub read_receipts: bool,
@@ -284,17 +284,6 @@ pub struct Preferences {
     /// Write pins, mutes, the archive, blocks and accepted requests back to the storage
     /// service, so the phone (and other devices) get them.
     pub sync_to_phone: bool,
-}
-
-impl Default for Preferences {
-    fn default() -> Self {
-        Self {
-            read_receipts: true,
-            typing_indicators: true,
-            link_previews: false,
-            sync_to_phone: false,
-        }
-    }
 }
 
 /// How far one of our messages got. Ordered: a later state implies the earlier ones.
@@ -746,6 +735,8 @@ pub enum Event {
     /// What the phone keeps in the storage service has been read, so chats it didn't accept
     /// can be told apart as message requests.
     StorageRead,
+    /// The account's settings from the storage service; `sync_to_phone` is the UI's.
+    Preferences(Preferences),
     /// Unread incoming messages per conversation, counted from the store at start.
     Unread(Vec<(ConversationId, u32)>),
     /// A page of a conversation's stored history, answering [`Command::LoadHistory`]: the
